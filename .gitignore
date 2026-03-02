@@ -137,3 +137,20 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Dépendances
+node_modules/
+
+# Fichiers de configuration sensibles
+.env
+.env.local
+.env.*.local
+
+# Dossiers de session et temporaires
+auth/
+temp/
+*.log
+
+# Fichiers système
+.DS_Store
+Thumbs.db

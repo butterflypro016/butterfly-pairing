@@ -1,223 +1,92 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Butterfly Pairing</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 0;
-            padding: 20px;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .container {
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            padding: 30px;
-            max-width: 500px;
-            width: 100%;
-        }
-        h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 30px;
-        }
-        h1 span {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        input {
-            width: 100%;
-            padding: 12px;
-            margin: 10px 0;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            font-size: 16px;
-            box-sizing: border-box;
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        button:hover {
-            transform: scale(1.02);
-        }
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .result {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
-            display: none;
-        }
-        .result.show {
-            display: block;
-        }
-        .code {
-            font-size: 28px;
-            font-weight: bold;
-            text-align: center;
-            padding: 15px;
-            background: #f0f0f0;
-            border-radius: 5px;
-            margin: 15px 0;
-            letter-spacing: 5px;
-        }
-        .session {
-            background: #d4edda;
-            color: #155724;
-            padding: 15px;
-            border-radius: 5px;
-            word-break: break-all;
-            margin: 15px 0;
-        }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 15px 0;
-        }
-        .info {
-            background: #e7f3ff;
-            color: #004085;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            font-size: 14px;
-        }
-        .loading {
-            text-align: center;
-            margin: 15px 0;
-        }
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🦋 <span>Butterfly Pairing</span></h1>
-        <form id="pairForm">
-            <input type="text" id="phone" placeholder="Numéro (ex: 221XXXXXXXX)" required>
-            <button type="submit" id="submitBtn">Obtenir le code</button>
-        </form>
-        <div id="result" class="result"></div>
-    </div>
+const express = require('express');
+const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const pino = require('pino');
+const fs = require('fs');
+const path = require('path');
 
-    <script>
-        const form = document.getElementById('pairForm');
-        const phoneInput = document.getElementById('phone');
-        const submitBtn = document.getElementById('submitBtn');
-        const resultDiv = document.getElementById('result');
+const app = express();
+app.use(express.json());
+app.use(express.static('public'));
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const phone = phoneInput.value.trim();
-            if (!phone) return;
+const logger = pino({ level: 'silent' });
+const TEMP_DIR = path.join(__dirname, 'temp');
+if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
 
-            // Désactiver le formulaire
-            phoneInput.disabled = true;
-            submitBtn.disabled = true;
-            resultDiv.classList.remove('show');
-            resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Demande en cours...</p></div>';
-            resultDiv.classList.add('show');
+// Route pour la page d'accueil
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-            try {
-                const response = await fetch('/pair', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phoneNumber: phone })
-                });
-                const data = await response.json();
+// Route pour démarrer le jumelage
+app.post('/pair', async (req, res) => {
+  const { phoneNumber } = req.body;
+  if (!phoneNumber) return res.status(400).json({ error: 'Numéro requis.' });
 
-                if (data.error) {
-                    resultDiv.innerHTML = `<div class="error">Erreur : ${data.error}</div>`;
-                    phoneInput.disabled = false;
-                    submitBtn.disabled = false;
-                    return;
-                }
+  const cleanNumber = phoneNumber.replace(/\D/g, '');
+  if (cleanNumber.length < 10) {
+    return res.status(400).json({ error: 'Numéro invalide. Utilise le format international (ex: 221XXXXXXXX).' });
+  }
 
-                if (data.success) {
-                    // Afficher le code
-                    resultDiv.innerHTML = `
-                        <div class="info">${data.message}</div>
-                        <div class="code">${data.code}</div>
-                        <p>En attente de la connexion WhatsApp...</p>
-                        <div class="loading"><div class="spinner"></div></div>
-                        <div id="pollingResult"></div>
-                    `;
+  const sessionDir = path.join(TEMP_DIR, `session_${Date.now()}`);
+  fs.mkdirSync(sessionDir);
 
-                    // Commencer le polling
-                    const token = data.token;
-                    const pollInterval = setInterval(async () => {
-                        try {
-                            const checkRes = await fetch('/check/' + token);
-                            const checkData = await checkRes.json();
-                            
-                            if (checkData.success) {
-                                clearInterval(pollInterval);
-                                document.getElementById('pollingResult').innerHTML = `
-                                    <div class="session">
-                                        <strong>SESSION_ID générée :</strong><br>
-                                        <code>${checkData.sessionId}</code>
-                                    </div>
-                                    <p>Copie cette chaîne et mets-la dans ton fichier .env.</p>
-                                `;
-                                // Réactiver le formulaire
-                                phoneInput.disabled = false;
-                                submitBtn.disabled = false;
-                            } else if (checkData.error) {
-                                clearInterval(pollInterval);
-                                document.getElementById('pollingResult').innerHTML = `<div class="error">Erreur : ${checkData.error}</div>`;
-                                phoneInput.disabled = false;
-                                submitBtn.disabled = false;
-                            }
-                            // Si pending, on continue
-                        } catch (err) {
-                            clearInterval(pollInterval);
-                            document.getElementById('pollingResult').innerHTML = `<div class="error">Erreur de communication</div>`;
-                            phoneInput.disabled = false;
-                            submitBtn.disabled = false;
-                        }
-                    }, 3000);
-                } else {
-                    resultDiv.innerHTML = `<div class="error">Erreur inconnue</div>`;
-                    phoneInput.disabled = false;
-                    submitBtn.disabled = false;
-                }
-            } catch (err) {
-                resultDiv.innerHTML = `<div class="error">Erreur réseau</div>`;
-                phoneInput.disabled = false;
-                submitBtn.disabled = false;
-            }
-        });
-    </script>
-</body>
-</html>
+  try {
+    const { state } = await useMultiFileAuthState(sessionDir);
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
+      version,
+      auth: state,
+      logger,
+      printQRInTerminal: false,
+      browser: ['Butterfly Pairing', 'Chrome', ''],
+    });
+
+    let pairingCode = null;
+    sock.ev.on('connection.update', (update) => {
+      if (update.connection === 'close') {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+      }
+    });
+
+    pairingCode = await sock.requestPairingCode(cleanNumber);
+    pairingCode = pairingCode.replace(/-/g, '');
+
+    return res.json({
+      success: true,
+      message: 'Code de jumelage généré. Entre ce code dans WhatsApp pour connecter le bot.',
+      code: pairingCode,
+      token: path.basename(sessionDir)
+    });
+  } catch (error) {
+    fs.rmSync(sessionDir, { recursive: true, force: true });
+    return res.status(500).json({ error: 'Erreur lors de la demande de code.' });
+  }
+});
+
+// Route pour vérifier l'état et récupérer la session
+app.get('/check/:token', async (req, res) => {
+  const { token } = req.params;
+  const sessionDir = path.join(TEMP_DIR, token);
+  if (!fs.existsSync(sessionDir)) {
+    return res.status(404).json({ error: 'Session introuvable.' });
+  }
+
+  const credsPath = path.join(sessionDir, 'creds.json');
+  if (fs.existsSync(credsPath)) {
+    try {
+      const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
+      const credsBase64 = Buffer.from(JSON.stringify(creds)).toString('base64');
+      const sessionId = `butterfly~${credsBase64}`;
+      fs.rmSync(sessionDir, { recursive: true, force: true });
+      return res.json({ success: true, sessionId });
+    } catch (e) {
+      return res.status(500).json({ error: 'Erreur de lecture.' });
+    }
+  } else {
+    return res.json({ success: false, status: 'pending' });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Serveur démarré sur http://localhost:${PORT}`));

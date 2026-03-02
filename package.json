@@ -1,0 +1,19 @@
+{
+  "name": "butterfly-pairing",
+  "version": "1.0.0",
+  "description": "Site de génération de session pour BUTTERFLY 16 MD",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.5.0",
+    "express": "^4.18.2",
+    "qrcode": "^1.5.1",
+    "pino": "^8.14.1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  }
+}
